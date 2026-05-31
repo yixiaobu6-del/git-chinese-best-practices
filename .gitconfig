@@ -1,0 +1,34 @@
+[user]
+	name = Your Name
+	email = your-email@example.com
+
+[core]
+	autocrlf = input
+	quotepath = false
+	ignorecase = false
+
+[alias]
+	st = status
+	co = checkout
+	br = branch
+	ci = commit
+	lg = log --oneline --graph --all --decorate
+	undo = reset --soft HEAD~1
+	last = log -1 HEAD
+	contributors = shortlog -sn
+	graph = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset'
+
+[push]
+	default = simple
+	autoSetupRemote = true
+
+[merge]
+	tool = vscode
+	ff = no
+
+[rebase]
+	autosquash = true
+	autostash = true
+
+[credential]
+	helper = osxkeychain

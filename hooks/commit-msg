@@ -1,0 +1,25 @@
+#!/bin/bash
+# Git commit-msg hook - 验证提交信息格式
+# 安装: ln -sf ../../hooks/commit-msg .git/hooks/commit-msg
+
+COMMIT_MSG_FILE=$1
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# 正则：<type>(<scope>): <subject>
+PATTERN="^(feat|fix|docs|style|refactor|test|chore|perf|ci|revert)(\(.+\))?: .{1,72}$"
+
+if ! echo "$COMMIT_MSG" | grep -qE "$PATTERN"; then
+    echo ""
+    echo "❌ 提交信息格式不正确！"
+    echo "正确格式: <type>(<scope>): <subject>"
+    echo "示例:"
+    echo "  feat(login): 添加用户登录功能"
+    echo "  fix(api): 修复空指针异常"
+    echo "  docs(readme): 更新安装说明"
+    echo ""
+    echo "type 可选值: feat | fix | docs | style | refactor | test | chore | perf | ci | revert"
+    exit 1
+fi
+
+echo "✅ 提交信息格式验证通过"
+exit 0

@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Git 交互式练习沙盒</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0f172a; color:#e2e8f0; font-family:'Menlo','Monaco','Cascadia Code','Consolas',monospace; }
+
+.terminal-bg { background:#1e293b; }
+.command-input { background:#0f172a; border:1px solid #334155; color:#22d3ee; font-family:inherit; outline:none; }
+.command-input:focus { border-color:#22d3ee; box-shadow:0 0 0 2px rgba(34,211,238,0.15); }
+
+.git-branch { position:relative; height:80px; overflow:hidden; }
+.branch-line { position:absolute; height:3px; border-radius:2px; }
+.commit-node { position:absolute; width:14px; height:14px; border-radius:50%; border:2px solid; transform:translate(-50%,-50%); cursor:pointer; transition:all .2s; }
+.commit-node:hover { transform:translate(-50%,-50%) scale(1.3); }
+.commit-node.main { border-color:#22d3ee; background:#22d3ee; }
+.commit-node.feature { border-color:#a78bfa; background:#a78bfa; }
+.commit-node.merge { border-color:#fbbf24; background:#fbbf24; }
+.commit-node.conflict { border-color:#f87171; background:#f87171; }
+.branch-label { position:absolute; font-size:10px; padding:1px 6px; border-radius:3px; white-space:nowrap; transform:translate(-50%,-100%); top:-6px; }
+
+.level-card { cursor:pointer; transition:all .2s; border:1px solid transparent; }
+.level-card:hover { border-color:#22d3ee; transform:translateY(-2px); }
+.level-card.active { border-color:#22d3ee; background:rgba(34,211,238,0.08); }
+.level-card.completed { border-color:#10b981; }
+.level-card.completed .level-badge { background:#10b981; }
+
+.terminal-output { background:#0f172a; border:1px solid #334155; }
+.terminal-line { font-size:13px; line-height:1.7; }
+.terminal-line.success { color:#34d399; }
+.terminal-line.error { color:#f87171; }
+.terminal-line.info { color:#93c5fd; }
+.terminal-line.warn { color:#fbbf24; }
+.terminal-line.command { color:#22d3ee; }
+
+.git-graph { position:relative; height:200px; overflow:hidden; }
+
+.animate-pulse-glow { animation:pulseGlow 2s infinite; }
+@keyframes pulseGlow { 0%,100% { box-shadow:0 0 5px rgba(34,211,238,0.2); } 50% { box-shadow:0 0 15px rgba(34,211,238,0.5); } }
+
+.tooltip { position:relative; }
+.tooltip:hover::after { content:attr(data-tip); position:absolute; bottom:100%; left:50%; transform:translateX(-50%); background:#1e293b; color:#e2e8f0; padding:4px 8px; border-radius:4px; font-size:12px; white-space:nowrap; z-index:10; border:1px solid #334155; }
+
+.scrollbar-thin::-webkit-scrollbar { width:4px; height:4px; }
+.scrollbar-thin::-webkit-scrollbar-track { background:transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background:#334155; border-radius:2px; }
+</style>
+</head>
+<body>
+
+<div class="max-w-7xl mx-auto p-4">
+  <!-- 头部 -->
+  <header class="flex items-center justify-between mb-6 pb-4 border-b border-slate-700">
+    <div>
+      <h1 class="text-2xl font-bold text-cyan-400"><i class="fa fa-code-fork mr-2"></i>Git 交互式练习沙盒</h1>
+      <p class="text-slate-400 text-sm mt-1">在浏览器中模拟 Git 命令，学习版本控制最佳实践</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <button onclick="showHistoryGraph()" class="px-3 py-1.5 rounded bg-slate-700 text-slate-300 hover:bg-slate-600 text-sm"><i class="fa fa-history mr-1"></i>提交历史</button>
+      <button onclick="resetCollab();document.getElementById('collabModal').classList.remove('hidden')" class="px-3 py-1.5 rounded bg-slate-700 text-slate-300 hover:bg-slate-600 text-sm"><i class="fa fa-users mr-1"></i>团队协作</button>
+      <button onclick="resetAll()" class="px-3 py-1.5 rounded bg-slate-700 text-slate-300 hover:bg-slate-600 text-sm"><i class="fa fa-refresh mr-1"></i>重置进度</button>
+      <span class="text-xs text-slate-500" id="progressDisplay">0 / 6</span>
+    </div>
+  </header>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- 左侧：关卡列表 -->
+    <div class="lg:col-span-1">
+      <div class="terminal-bg rounded-lg p-4">
+        <h3 class="text-sm font-bold text-slate-300 mb-3"><i class="fa fa-tasks mr-1"></i>练习关卡</h3>
+        <div class="space-y-2" id="levelList"></div>
+      </div>
+
+      <!-- Git 分支可视化 -->
+      <div class="terminal-bg rounded-lg p-4 mt-4">
+        <h3 class="text-sm font-bold text-slate-300 mb-3"><i class="fa fa-code-fork mr-1"></i>分支可视化</h3>
+        <div id="gitGraph" class="git-graph relative min-h-[160px]"></div>
+        <div class="flex flex-wrap gap-2 mt-3 text-xs text-slate-400">
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-cyan-400"></span>main</span>
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-violet-400"></span>feature</span>
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-yellow-400"></span>merge</span>
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-red-400"></span>conflict</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右侧：练习面板 -->
+    <div class="lg:col-span-2">
+      <!-- 关卡说明 -->
+      <div class="terminal-bg rounded-lg p-5 mb-4" id="levelInfo">
+        <div class="flex items-start justify-between mb-3">
+          <div>
+            <span class="text-xs text-cyan-400 font-mono" id="levelBadge">关卡 1/6</span>
+            <h2 class="text-lg font-bold text-white mt-1" id="levelTitle">初始化仓库</h2>
+          </div>
+          <button onclick="showHint()" class="px-3 py-1.5 rounded bg-amber-600/20 text-amber-400 hover:bg-amber-600/30 text-sm border border-amber-600/30">
+            <i class="fa fa-lightbulb-o mr-1"></i>提示
+          </button>
+        </div>
+        <p class="text-slate-400 text-sm" id="levelDesc">学习如何创建一个新的 Git 仓库</p>
+        <div class="mt-3 text-xs text-slate-500" id="levelGoal"></div>
+      </div>
+
+      <!-- 命令输入 -->
+      <div class="terminal-bg rounded-lg p-4 mb-4">
+        <div class="flex gap-2">
+          <span class="text-cyan-400 mt-2.5">$</span>
+          <input type="text" id="cmdInput" class="command-input flex-1 rounded px-3 py-2 text-sm" placeholder="输入 git 命令..." autofocus>
+          <button onclick="executeCommand()" class="px-4 py-2 rounded bg-cyan-600 text-white hover:bg-cyan-500 text-sm"><i class="fa fa-play mr-1"></i>执行</button>
+        </div>
+        <div class="flex flex-wrap gap-2 mt-2">
+          <span class="text-xs text-slate-500 mr-1">快捷命令:</span>
+          <button onclick="quickCmd('git init')" class="px-2 py-0.5 rounded bg-slate-700 text-slate-400 text-xs hover:bg-slate-600">git init</button>
+          <button onclick="quickCmd('git status')" class="px-2 py-0.5 rounded bg-slate-700 text-slate-400 text-xs hover:bg-slate-600">git status</button>
+          <button onclick="quickCmd('git log --oneline --graph')" class="px-2 py-0.5 rounded bg-slate-700 text-slate-400 text-xs hover:bg-slate-600">git log</button>
+          <button onclick="quickCmd('git branch')" class="px-2 py-0.5 rounded bg-slate-700 text-slate-400 text-xs hover:bg-slate-600">git branch</button>
+          <button onclick="quickCmd('git help')" class="px-2 py-0.5 rounded bg-slate-700 text-slate-400 text-xs hover:bg-slate-600">git help</button>
+        </div>
+      </div>
+
+      <!-- 终端输出 -->
+      <div class="terminal-bg rounded-lg p-4 mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-sm font-bold text-slate-300"><i class="fa fa-terminal mr-1"></i>终端输出</h3>
+          <button onclick="clearOutput()" class="text-xs text-slate-500 hover:text-slate-300"><i class="fa fa-trash-o mr-1"></i>清空</button>
+        </div>
+        <div id="output" class="terminal-output rounded p-3 min-h-[200px] max-h-[320px] overflow-y-auto scrollbar-thin font-mono text-sm">
+          <div class="terminal-line info">欢迎使用 Git 交互式练习沙盒！选择一个关卡开始练习。</div>
+          <div class="terminal-line info">输入 <span class="text-cyan-400">git help</span> 查看可用命令列表。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 冲突解决对话框 -->
+  <div id="conflictModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 hidden" style="backdrop-filter:blur(4px);">
+    <div class="terminal-bg rounded-xl p-6 max-w-2xl w-full mx-4 border border-slate-600">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-red-400"><i class="fa fa-exclamation-triangle mr-2"></i>合并冲突 - 需要手动解决</h3>
+        <button onclick="closeConflictModal()" class="text-slate-400 hover:text-white"><i class="fa fa-times"></i></button>
+      </div>
+      <p class="text-sm text-slate-400 mb-4">两个分支修改了同一个文件的同一区域，请选择保留哪个版本：</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+        <div class="bg-slate-800 rounded p-3 border border-cyan-600/30">
+          <div class="text-xs text-cyan-400 mb-1"><<<<<<< HEAD (当前分支)</div>
+          <pre id="conflictOurs" class="text-sm text-slate-200"></pre>
+        </div>
+        <div class="bg-slate-800 rounded p-3 border border-violet-600/30">
+          <div class="text-xs text-violet-400 mb-1">>>>>>>> feature (合并分支)</div>
+          <pre id="conflictTheirs" class="text-sm text-slate-200"></pre>
+        </div>
+      </div>
+      <div class="flex gap-2 justify-end">
+        <button onclick="resolveConflict('ours')" class="px-4 py-2 rounded bg-cyan-600 text-white hover:bg-cyan-500 text-sm">保留当前版本</button>
+        <button onclick="resolveConflict('theirs')" class="px-4 py-2 rounded bg-violet-600 text-white hover:bg-violet-500 text-sm">保留合并版本</button>
+        <button onclick="resolveConflict('both')" class="px-4 py-2 rounded bg-amber-600 text-white hover:bg-amber-500 text-sm">保留两者</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 提交历史可视化模态框 -->
+<div id="historyModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 hidden" style="backdrop-filter:blur(4px);">
+  <div class="terminal-bg rounded-xl p-6 max-w-4xl w-full mx-4 border border-slate-600 max-h-[85vh] overflow-y-auto">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-bold text-cyan-400"><i class="fa fa-history mr-2"></i>提交历史可视化</h3>
+      <button onclick="document.getElementById('historyModal').classList.add('hidden')" class="text-slate-400 hover:text-white"><i class="fa fa-times"></i></button>
+    </div>
+    <div id="historyGraphContent" class="min-h-[200px]"></div>
+    <div class="mt-4 text-xs text-slate-500">
+      <span class="inline-block w-3 h-3 rounded-full bg-cyan-400 mr-1"></span>main
+      <span class="inline-block w-3 h-3 rounded-full bg-violet-400 mr-1 ml-3"></span>feature
+      <span class="inline-block w-3 h-3 rounded-full bg-amber-400 mr-1 ml-3"></span>merge
+    </div>
+  </div>
+</div>
+
+<!-- 团队协作模拟模态框 -->
+<div id="collabModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 hidden" style="backdrop-filter:blur(4px);">
+  <div class="terminal-bg rounded-xl p-6 max-w-3xl w-full mx-4 border border-slate-600 max-h-[85vh] overflow-y-auto">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-bold text-amber-400"><i class="fa fa-users mr-2"></i>团队协作模拟</h3>
+      <button onclick="document.getElementById('collabModal').classList.add('hidden')" class="text-slate-400 hover:text-white"><i class="fa fa-times"></i></button>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+      <div class="bg-slate-800 rounded p-3 border border-slate-600">
+        <div class="text-xs text-cyan-400 font-bold mb-2">👤 开发者 A（main）</div>
+        <div id="collabAEvents" class="text-xs text-slate-400 min-h-[60px]"></div>
+      </div>
+      <div class="bg-slate-800 rounded p-3 border border-slate-600">
+        <div class="text-xs text-violet-400 font-bold mb-2">👤 开发者 B（feature/login）</div>
+        <div id="collabBEvents" class="text-xs text-slate-400 min-h-[60px]"></div>
+      </div>
+      <div class="bg-slate-800 rounded p-3 border border-slate-600">
+        <div class="text-xs text-amber-400 font-bold mb-2">👤 开发者 C（feature/api）</div>
+        <div id="collabCEvents" class="text-xs text-slate-400 min-h-[60px]"></div>
+      </div>
+    </div>
+    <div id="collabTimeline" class="bg-slate-800 rounded p-4 min-h-[100px] border border-slate-600 mb-3">
+      <div class="text-xs text-slate-500 mb-2">协作时间线</div>
+      <div id="collabLog" class="text-xs font-mono space-y-1"></div>
+    </div>
+    <div class="flex gap-2">
+      <button onclick="runCollabStep()" class="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-500 text-sm"><i class="fa fa-play mr-1"></i>下一步</button>
+      <button onclick="runFullCollab()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 text-sm"><i class="fa fa-forward mr-1"></i>全部执行</button>
+      <button onclick="resetCollab()" class="px-4 py-2 bg-slate-600 text-white rounded hover:bg-slate-500 text-sm"><i class="fa fa-refresh mr-1"></i>重置</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// Git 状态模拟
+// ============================================================
+const state = {
+  initialized: false,
+  repo: {
+    commits: [],
+    branches: { main: null },
+    head: 'main',
+    staged: [],
+    workingDir: { files: {} },
+    log: []
+  },
+  currentLevel: 0,
+  completedLevels: new Set(),
+  commitCounter: 0,
+  conflictResolved: 0
+};
+
+// ============================================================
+// 关卡定义
+// ============================================================
+const LEVELS = [
+  {
+    id: 'init',
+    title: '初始化仓库',
+    badge: 'git init',
+    desc: '学习如何创建一个新的 Git 仓库，理解 .git 目录的作用。',
+    goal: '执行 git init 初始化仓库，然后用 git status 检查状态。',
+    checkComplete: (s, cmd) => {
+      if (s.initialized && cmd === 'git status') return true;
+      if (s.initialized && s.repo.commits.length === 0 && cmd === 'git status') return true;
+      return false;
+    },
+    hints: ['第一步：输入 git init 创建新仓库', '第二步：输入 git status 查看仓库状态', '初始化成功后，会显示 "Initialized empty Git repository"'],
+    sim: (cmd, s) => sim_init(cmd, s)
+  },
+  {
+    id: 'commit',
+    title: '首次提交',
+    badge: 'git add / commit',
+    desc: '学习暂存文件并创建第一次提交，理解工作区、暂存区、仓库的概念。',
+    goal: '创建文件 -> git add -> git commit，完成第一次提交。',
+    checkComplete: (s) => s.repo.commits.length >= 1,
+    hints: ['先执行 git init', '使用 echo "content" > file.txt 创建文件', '输入 git add file.txt 暂存', '输入 git commit -m "首次提交"'],
+    sim: (cmd, s) => sim_commit(cmd, s)
+  },
+  {
+    id: 'branch',
+    title: '分支管理',
+    badge: 'git branch',
+    desc: '学习创建和切换分支，理解分支是 Git 的核心概念。',
+    goal: '创建一个 feature 分支，切换到它上面，然后查看分支列表。',
+    checkComplete: (s) => s.repo.branches.hasOwnProperty('feature') && s.repo.head === 'feature',
+    hints: ['先完成一次提交（参考上一关）', '输入 git branch feature 创建分支', '输入 git checkout feature 切换分支', '输入 git branch 查看所有分支'],
+    sim: (cmd, s) => sim_branch(cmd, s)
+  },
+  {
+    id: 'merge',
+    title: '合并分支',
+    badge: 'git merge',
+    desc: '学习将 feature 分支的变更合并回 main 分支。',
+    goal: '在 feature 分支上做一次提交，然后切换到 main 分支合并 feature。',
+    checkComplete: (s) => s.repo.log.some(l => l.includes('Merge') || l.includes('merge')),
+    hints: ['确保 main 和 feature 都有提交', '先切换到 main: git checkout main', '执行 git merge feature', '合并成功后使用 git log 查看'],
+    sim: (cmd, s) => sim_merge(cmd, s)
+  },
+  {
+    id: 'rebase',
+    title: '变基操作',
+    badge: 'git rebase',
+    desc: '学习使用 rebase 将 feature 分支的提交变基到 main 分支的最新提交上。',
+    goal: '在 main 上新提交一次，然后在 feature 上执行 git rebase main。',
+    checkComplete: (s) => s.repo.log.some(l => l.includes('rebase') || l.includes('Rebase')),
+    hints: ['在 main 分支上做一次新提交', '切换到 feature 分支', '执行 git rebase main', '变基后 feature 的提交会在 main 的最新提交之后'],
+    sim: (cmd, s) => sim_rebase(cmd, s)
+  },
+  {
+    id: 'conflict',
+    title: '解决冲突',
+    badge: 'merge conflict',
+    desc: '学习处理合并冲突——两个分支修改了同一个文件的同一区域。',
+    goal: '制造冲突场景 → 手动解决冲突 → git add → git commit 完成合并。',
+    checkComplete: (s) => s.conflictResolved >= 1,
+    hints: ['在 main 分支修改 readme.md', '在 feature 分支修改 readme.md 的同一行', '尝试合并时会提示冲突', '打开冲突文件手动编辑，去掉冲突标记', 'git add 标记已解决，git commit 完成合并'],
+    sim: (cmd, s) => sim_conflict(cmd, s)
+  }
+];
+
+// ============================================================
+// 冲突场景数据
+// ============================================================
+const CONFLICT_SCENARIOS = [
+  { file: 'readme.md', ours: '# 项目文档\n\n## 简介\n这是一个很棒的项目。\n\n## 安装\n运行 npm install', theirs: '# 项目文档\n\n## 简介\n这是一个超级棒的项目！\n\n## 快速开始\n运行 yarn install' },
+  { file: 'config.json', ours: '{\n  "version": "1.0",\n  "port": 3000,\n  "debug": true\n}', theirs: '{\n  "version": "2.0",\n  "port": 8080,\n  "debug": false,\n  "features": ["auth", "api"]\n}' },
+  { file: 'index.js', ours: 'function greet(name) {\n  return "Hello, " + name;\n}\n\nmodule.exports = { greet };', theirs: 'function greet(name) {\n  return "Hi, " + name + "!";\n}\n\nexport default greet;' },
+  { file: 'style.css', ours: '.container {\n  max-width: 1200px;\n  margin: 0 auto;\n  padding: 20px;\n}', theirs: '.wrapper {\n  max-width: 960px;\n  margin: 0 16px;\n  padding: 24px;\n  display: flex;\n}' },
+  { file: 'api.py', ours: 'from flask import Flask\napp = Flask(__name__)\n\n@app.route("/")\ndef home():\n    return "Hello World"', theirs: 'import tornado\nfrom tornado.web import RequestHandler\n\nclass HomeHandler(RequestHandler):\n    def get(self):\n        self.write("Hello World")' }
+];
+let currentScenario = 0;
+
+// ============================================================
+// 模拟器函数
+// ============================================================
+function sim_init(cmd, s) {
+  const output = [];
+  if (cmd === 'git init') {
+    if (s.initialized) {
+      output.push({ type: 'warn', text: '已重新初始化。仓库已存在。' });
+    } else {
+      s.initialized = true;
+      s.repo.branches = { main: null };
+      s.repo.head = 'main';
+      s.repo.commits = [];
+      s.repo.staged = [];
+      s.repo.workingDir = { files: {} };
+      s.repo.log = [];
+      output.push({ type: 'success', text: '已初始化空的 Git 仓库 (.git/)' });
+      output.push({ type: 'info', text: '提示: 使用 git status 查看仓库状态' });
+    }
+  } else if (cmd === 'git status') {
+    if (!s.initialized) {
+      output.push({ type: 'error', text: 'fatal: 不是一个 git 仓库。请先执行 git init' });
+    } else if (s.repo.staged.length === 0 && Object.keys(s.repo.workingDir.files).length === 0) {
+      output.push({ type: 'info', text: '位于分支 main' });
+      output.push({ type: 'info', text: '无文件要提交，干净的工作区' });
+    } else {
+      output.push({ type: 'info', text: `位于分支 ${s.repo.head}` });
+      if (s.repo.staged.length > 0) {
+        output.push({ type: 'success', text: '要提交的变更：' });
+        s.repo.staged.forEach(f => output.push({ type: 'success', text: `  新文件: ${f}` }));
+      }
+      const unstaged = Object.keys(s.repo.workingDir.files).filter(f => !s.repo.staged.includes(f));
+      if (unstaged.length > 0) {
+        output.push({ type: 'warn', text: '未暂存的变更：' });
+        unstaged.forEach(f => output.push({ type: 'warn', text: `  修改: ${f}` }));
+      }
+    }
+  } else if (cmd === 'git help') {
+    output.push({ type: 'info', text: '可用命令列表：' });
+    output.push({ type: 'info', text: '  git init              - 初始化仓库' });
+    output.push({ type: 'info', text: '  git status            - 查看状态' });
+    output.push({ type: 'info', text: '  git add <file>        - 暂存文件' });
+    output.push({ type: 'info', text: '  git commit -m "msg"   - 提交' });
+    output.push({ type: 'info', text: '  git branch <name>     - 创建分支' });
+    output.push({ type: 'info', text: '  git branch            - 列出分支' });
+    output.push({ type: 'info', text: '  git checkout <branch> - 切换分支' });
+    output.push({ type: 'info', text: '  git merge <branch>    - 合并分支' });
+    output.push({ type: 'info', text: '  git rebase <branch>   - 变基' });
+    output.push({ type: 'info', text: '  git log               - 查看历史' });
+    output.push({ type: 'info', text: '  echo > file           - 创建/修改文件' });
+    output.push({ type: 'info', text: '  cat <file>            - 查看文件' });
+    output.push({ type: 'info', text: '  clear                 - 清屏' });
+  } else {
+    output.push({ type: 'error', text: `git: '${cmd.replace('git ','')}' 不是一个 git 命令。输入 git help 查看可用命令。` });
+  }
+  return output;
+}
+
+function sim_commit(cmd, s) {
+  const output = [];
+  if (!s.initialized) {
+    output.push({ type: 'error', text: 'fatal: 不是一个 git 仓库' });
+    return output;
+  }
+  if (cmd.startsWith('echo ')) {
+    const match = cmd.match(/echo\s+(.+?)\s*>\s*(.+)/);
+    if (match) {
+      const content = match[1].replace(/^["']|["']$/g, '');
+      const file = match[2].trim();
+      s.repo.workingDir.files[file] = content;
+      output.push({ type: 'info', text: `已创建/更新文件: ${file}` });
+    } else {
+      output.push({ type: 'error', text: '用法: echo "内容" > 文件名' });
+    }
+  } else if (cmd.startsWith('git add ')) {
+    const file = cmd.replace('git add ', '').trim();
+    if (file === '.') {
+      Object.keys(s.repo.workingDir.files).forEach(f => {
+        if (!s.repo.staged.includes(f)) s.repo.staged.push(f);
+      });
+      output.push({ type: 'success', text: `已暂存所有文件` });
+    } else if (s.repo.workingDir.files[file]) {
+      s.repo.staged.push(file);
+      output.push({ type: 'success', text: `已暂存: ${file}` });
+    } else {
+      output.push({ type: 'error', text: `fatal: 路径 '${file}' 不存在` });
+    }
+  } else if (cmd.startsWith('git commit')) {
+    if (s.repo.staged.length === 0) {
+      output.push({ type: 'error', text: 'nothing to commit, working tree clean' });
+      return output;
+    }
+    const msgMatch = cmd.match(/-m\s+["'](.+?)["']/);
+    const msg = msgMatch ? msgMatch[1] : `提交 #${s.commitCounter + 1}`;
+    s.commitCounter++;
+    const hash = 'a' + String(s.commitCounter).padStart(6, '0');
+    const commit = { hash, message: msg, branch: s.repo.head, files: [...s.repo.staged], timestamp: Date.now() };
+    s.repo.commits.push(commit);
+    s.repo.branches[s.repo.head] = hash;
+    s.repo.log.unshift(`${hash} ${msg}`);
+    s.repo.staged = [];
+    output.push({ type: 'success', text: `[${s.repo.head} ${hash}] ${msg}` });
+    output.push({ type: 'info', text: ` ${s.repo.staged.length} 个文件被修改` });
+  } else {
+    return sim_init(cmd, s);
+  }
+  return output;
+}
+
+function sim_branch(cmd, s) {
+  const output = [];
+  if (!s.initialized) { output.push({ type: 'error', text: 'fatal: 不是一个 git 仓库' }); return output; }
+  if (s.repo.commits.length === 0) { output.push({ type: 'error', text: 'fatal: 当前分支没有任何提交' }); return output; }
+  if (cmd === 'git branch') {
+    Object.keys(s.repo.branches).forEach(b => {
+      if (b === s.repo.head) output.push({ type: 'success', text: `* ${b}` });
+      else output.push({ type: 'info', text: `  ${b}` });
+    });
+  } else if (cmd.startsWith('git branch ')) {
+    const name = cmd.replace('git branch ', '').trim();
+    if (!name || name === '') { output.push({ type: 'error', text: '用法: git branch <分支名>' }); return output; }
+    if (s.repo.branches[name]) { output.push({ type: 'error', text: `fatal: 分支 '${name}' 已存在` }); return output; }
+    s.repo.branches[name] = s.repo.branches[s.repo.head];
+    output.push({ type: 'success', text: `已创建分支: ${name}` });
+  } else if (cmd.startsWith('git checkout ')) {
+    const name = cmd.replace('git checkout ', '').trim();
+    if (!s.repo.branches[name]) { output.push({ type: 'error', text: `error: 分支 '${name}' 未找到` }); return output; }
+    s.repo.head = name;
+    output.push({ type: 'info', text: `切换到分支 '${name}'` });
+  } else if (cmd.startsWith('git switch ')) {
+    const name = cmd.replace('git switch ', '').trim();
+    if (!s.repo.branches[name]) { output.push({ type: 'error', text: `error: 分支 '${name}' 未找到` }); return output; }
+    s.repo.head = name;
+    output.push({ type: 'info', text: `切换到分支 '${name}'` });
+  } else {
+    return sim_commit(cmd, s);
+  }
+  return output;
+}
+
+function sim_merge(cmd, s) {
+  const output = [];
+  if (!s.initialized) { output.push({ type: 'error', text: 'fatal: 不是一个 git 仓库' }); return output; }
+  if (cmd.startsWith('git merge ')) {
+    const name = cmd.replace('git merge ', '').trim();
+    if (!s.repo.branches[name]) { output.push({ type: 'error', text: `merge: '${name}' — 未找到该分支` }); return output; }
+    const ourHash = s.repo.branches[s.repo.head];
+    const theirHash = s.repo.branches[name];
+    if (ourHash === theirHash) { output.push({ type: 'warn', text: ' Already up to date.' }); return output; }
+    s.commitCounter++;
+    const hash = 'a' + String(s.commitCounter).padStart(6, '0');
+    const msg = `Merge branch '${name}' into ${s.repo.head}`;
+    s.repo.commits.push({ hash, message: msg, branch: s.repo.head, merge: true, timestamp: Date.now() });
+    s.repo.branches[s.repo.head] = hash;
+    s.repo.log.unshift(`${hash} ${msg}`);
+    output.push({ type: 'success', text: `Merge made by the 'ort' strategy.` });
+    output.push({ type: 'success', text: `${hash} ${msg}` });
+  } else {
+    return sim_branch(cmd, s);
+  }
+  return output;
+}
+
+function sim_rebase(cmd, s) {
+  const output = [];
+  if (!s.initialized) { output.push({ type: 'error', text: 'fatal: 不是一个 git 仓库' }); return output; }
+  if (cmd.startsWith('git rebase ')) {
+    const name = cmd.replace('git rebase ', '').trim();
+    if (!s.repo.branches[name]) { output.push({ type: 'error', text: `fatal: 无效的上游 '${name}'` }); return output; }
+    const branch = s.repo.head;
+    const targetHash = s.repo.branches[name];
+    s.commitCounter++;
+    const hash = 'a' + String(s.commitCounter).padStart(6, '0');
+    const msg = `Rebase: ${s.repo.head} onto ${name}`;
+    s.repo.commits.push({ hash, message: msg, branch: s.repo.head, rebase: true, timestamp: Date.now() });
+    s.repo.branches[s.repo.head] = hash;
+    s.repo.log.unshift(`${hash} ${msg}`);
+    output.push({ type: 'success', text: `Successfully rebased and updated refs/heads/${branch}.` });
+    output.push({ type: 'info', text: `已将 ${branch} 变基到 ${name}` });
+  } else {
+    return sim_merge(cmd, s);
+  }
+  return output;
+}
+
+function sim_conflict(cmd, s) {
+  const output = [];
+  if (!s.initialized) { output.push({ type: 'error', text: 'fatal: 不是一个 git 仓库' }); return output; }
+  if (cmd === 'git merge feature' || cmd === 'git merge conflict-branch') {
+    const scenario = CONFLICT_SCENARIOS[currentScenario % CONFLICT_SCENARIOS.length];
+    output.push({ type: 'error', text: `自动合并 ${scenario.file} 失败` });
+    output.push({ type: 'warn', text: '冲突（内容）：合并冲突于 ' + scenario.file });
+    output.push({ type: 'info', text: '自动合并失败，请手动解决冲突后再提交。' });
+    document.getElementById('conflictModal').classList.remove('hidden');
+    document.getElementById('conflictOurs').textContent = scenario.ours;
+    document.getElementById('conflictTheirs').textContent = scenario.theirs;
+    state.pendingConflict = true;
+  } else if (cmd.startsWith('echo ') || cmd.startsWith('git add') || cmd.startsWith('git commit')) {
+    return sim_commit(cmd, s);
+  } else {
+    return sim_rebase(cmd, s);
+  }
+  return output;
+}
+
+// ============================================================
+// 命令执行器
+// ============================================================
+function executeCommand() {
+  const input = document.getElementById('cmdInput');
+  const cmd = input.value.trim();
+  if (!cmd) return;
+  input.value = '';
+  addOutput({ type: 'command', text: `$ ${cmd}` });
+
+  const level = LEVELS[state.currentLevel];
+  if (!level) return;
+
+  const output = level.sim ? level.sim(cmd, state) : [{ type: 'info', text: '执行成功' }];
+  output.forEach(o => addOutput(o));
+
+  // 检查是否完成
+  const checkFn = level.checkComplete;
+  const done = typeof checkFn === 'function' ? checkFn(state, cmd) : false;
+  if (done) {
+    state.completedLevels.add(state.currentLevel);
+    updateProgress();
+    addOutput({ type: 'success', text: '恭喜！本关完成！' });
+  }
+
+  renderGraph();
+  renderLevels();
+}
+
+function quickCmd(cmd) {
+  document.getElementById('cmdInput').value = cmd;
+  executeCommand();
+}
+
+function addOutput(line) {
+  const el = document.getElementById('output');
+  const div = document.createElement('div');
+  div.className = `terminal-line ${line.type}`;
+  div.innerHTML = line.text;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearOutput() {
+  document.getElementById('output').innerHTML = '';
+}
+
+function showHint() {
+  const level = LEVELS[state.currentLevel];
+  if (!level) return;
+  const hints = level.hints || [];
+  hints.forEach((h, i) => addOutput({ type: 'warn', text: `提示 ${i + 1}: ${h}` }));
+}
+
+function closeConflictModal() {
+  document.getElementById('conflictModal').classList.add('hidden');
+}
+
+function resolveConflict(choice) {
+  closeConflictModal();
+  const scenario = CONFLICT_SCENARIOS[currentScenario % CONFLICT_SCENARIOS.length];
+  state.conflictResolved++;
+  state.commitCounter++;
+  const hash = 'a' + String(state.commitCounter).padStart(6, '0');
+  const msg = `解决冲突: ${scenario.file} (保留${choice === 'ours' ? '当前' : choice === 'theirs' ? '合并' : '两者'})`;
+  state.repo.commits.push({ hash, message: msg, branch: state.repo.head, merge: true, conflict: true, timestamp: Date.now() });
+  state.repo.branches[state.repo.head] = hash;
+  state.repo.log.unshift(`${hash} ${msg}`);
+  state.pendingConflict = false;
+  currentScenario++;
+  addOutput({ type: 'success', text: `合并冲突已解决！提交: ${hash} ${msg}` });
+  const done = LEVELS[5].checkComplete(state);
+  if (done) {
+    state.completedLevels.add(5);
+    updateProgress();
+    addOutput({ type: 'success', text: '恭喜通过所有关卡！你已经掌握了 Git 核心操作。' });
+  }
+  renderGraph();
+  renderLevels();
+}
+
+// ============================================================
+// 分支可视化
+// ============================================================
+function renderGraph() {
+  const el = document.getElementById('gitGraph');
+  if (!state.initialized || state.repo.commits.length === 0) {
+    el.innerHTML = '<div class="absolute inset-0 flex items-center justify-center text-slate-600 text-xs">初始化仓库并提交后将显示分支图</div>';
+    return;
+  }
+  const commits = state.repo.commits.slice(-10);
+  const w = el.offsetWidth || 600;
+  const h = 160;
+  const padding = 40;
+  const stepX = Math.min(60, (w - 80) / Math.max(commits.length, 2));
+  const midY = h / 2;
+  let html = '';
+
+  // 分支线
+  const branchColors = { main: '#22d3ee', feature: '#a78bfa', 'conflict-branch': '#f87171' };
+  const branches = Object.keys(state.repo.branches);
+  branches.forEach((b, bi) => {
+    const xOff = padding + bi * 20;
+    const color = branchColors[b] || '#94a3b8';
+    html += `<div class="branch-line" style="left:${xOff}px;top:${midY}px;width:${w - xOff - padding}px;background:${color};opacity:0.3"></div>`;
+  });
+
+  // 提交节点
+  const headBranch = state.repo.head;
+  commits.forEach((c, i) => {
+    const x = padding + i * stepX + 20;
+    const y = midY + (c.branch === 'feature' ? -20 : c.branch === 'main' ? 0 : 20);
+    let colorClass = 'main';
+    if (c.merge) colorClass = 'merge';
+    else if (c.conflict) colorClass = 'conflict';
+    else if (c.branch === 'feature') colorClass = 'feature';
+    const isHead = c.hash === state.repo.branches[headBranch];
+    html += `<div class="commit-node ${colorClass}" style="left:${x}px;top:${y}px" title="${c.hash} ${c.message}"></div>`;
+    if (isHead) {
+      html += `<div class="branch-label" style="left:${x}px;top:${y - 14}px;background:#22d3ee;color:#0f172a;font-weight:bold">HEAD → ${headBranch}</div>`;
+    }
+  });
+
+  el.innerHTML = html;
+}
+
+// ============================================================
+// 关卡渲染
+// ============================================================
+function renderLevels() {
+  const el = document.getElementById('levelList');
+  el.innerHTML = LEVELS.map((l, i) => {
+    const active = i === state.currentLevel ? 'active' : '';
+    const completed = state.completedLevels.has(i) ? 'completed' : '';
+    const bg = completed ? 'bg-emerald-900/20' : active ? 'bg-cyan-900/20' : '';
+    return `<div class="level-card ${active} ${completed} rounded p-3 ${bg}" onclick="selectLevel(${i})">
+      <div class="flex items-center gap-2">
+        <span class="level-badge inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${completed ? 'bg-emerald-500 text-white' : active ? 'bg-cyan-500 text-white' : 'bg-slate-700 text-slate-400'}">${completed ? '<i class="fa fa-check"></i>' : i + 1}</span>
+        <div class="flex-1">
+          <div class="text-sm font-medium ${active ? 'text-cyan-300' : completed ? 'text-emerald-300' : 'text-slate-300'}">${l.title}</div>
+          <div class="text-xs text-slate-500">${l.badge}</div>
+        </div>
+        ${completed ? '<i class="fa fa-check-circle text-emerald-400 text-xs"></i>' : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function selectLevel(i) {
+  if (i > 0 && !state.completedLevels.has(i - 1)) {
+    addOutput({ type: 'warn', text: `请先完成上一关 "${LEVELS[i - 1].title}" 再解锁本关。` });
+    return;
+  }
+  state.currentLevel = i;
+  renderLevels();
+  updateLevelInfo();
+}
+
+function updateLevelInfo() {
+  const l = LEVELS[state.currentLevel];
+  if (!l) return;
+  document.getElementById('levelBadge').textContent = `关卡 ${state.currentLevel + 1}/${LEVELS.length}`;
+  document.getElementById('levelTitle').textContent = l.title;
+  document.getElementById('levelDesc').textContent = l.desc;
+  document.getElementById('levelGoal').innerHTML = `<i class="fa fa-bullseye mr-1 text-amber-400"></i>目标: ${l.goal}`;
+}
+
+function updateProgress() {
+  document.getElementById('progressDisplay').textContent = `${state.completedLevels.size} / ${LEVELS.length}`;
+}
+
+function resetAll() {
+  if (!confirm('确定要重置所有进度吗？')) return;
+  state.initialized = false;
+  state.repo = { commits: [], branches: { main: null }, head: 'main', staged: [], workingDir: { files: {} }, log: [] };
+  state.currentLevel = 0;
+  state.completedLevels = new Set();
+  state.commitCounter = 0;
+  state.conflictResolved = 0;
+  state.pendingConflict = false;
+  currentScenario = 0;
+  document.getElementById('output').innerHTML = '<div class="terminal-line info">已重置，重新开始练习。</div>';
+  renderLevels();
+  updateLevelInfo();
+  updateProgress();
+  renderGraph();
+}
+
+// ============================================================
+// 键盘事件
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  renderLevels();
+  updateLevelInfo();
+  updateProgress();
+  renderGraph();
+  document.getElementById('cmdInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') executeCommand();
+  });
+});
+
+// ============================================================
+// 提交历史可视化
+// ============================================================
+function showHistoryGraph() {
+  var content = document.getElementById('historyGraphContent');
+  if (state.repo.commits.length === 0) {
+    content.innerHTML = '<div class="text-center text-slate-500 py-8">尚无提交记录，请先完成一些关卡产生提交</div>';
+  } else {
+    var commits = state.repo.commits;
+    var usedBranches = {};
+    var graphLines = [];
+    commits.forEach(function(c) {
+      var branch = c.branch || 'unknown';
+      if (!usedBranches[branch]) usedBranches[branch] = Object.keys(usedBranches).length;
+      var col = usedBranches[branch];
+      var prefix = '';
+      for (var j = 0; j < Object.keys(usedBranches).length; j++) {
+        prefix += j === col ? '* ' : '| ';
+      }
+      var mergeMark = c.merge ? ' (merge)' : '';
+      var hashShort = c.hash ? c.hash.slice(0, 7) : '------';
+      graphLines.push(prefix + hashShort + ' ' + c.message + mergeMark);
+    });
+    content.innerHTML = '<div class="font-mono text-sm leading-relaxed whitespace-pre bg-gray-900 rounded p-4 overflow-x-auto text-cyan-300">' + graphLines.reverse().map(function(l) { return l.replace(/\*/g, '<span style="color:#22d3ee;font-weight:bold">*</span>').replace(/\|/g, '<span style="color:#475569">|</span>'); }).join('\n') + '</div>';
+  }
+  document.getElementById('historyModal').classList.remove('hidden');
+}
+
+// ============================================================
+// 团队协作模拟
+// ============================================================
+var collabStep = 0;
+var collabRunning = false;
+var collabSteps = [
+  { actor: 'A', action: 'git init', detail: '初始化仓库' },
+  { actor: 'A', action: 'echo "init" > readme.md && git add . && git commit -m "init"', detail: '首次提交' },
+  { actor: 'A', action: 'git checkout -b feature/login', detail: '创建 login 分支' },
+  { actor: 'B', action: 'echo "login page" > login.html && git add . && git commit -m "feat: add login page"', detail: '登录页面开发' },
+  { actor: 'A', action: 'git checkout main && git merge feature/login', detail: '合并 login 分支' },
+  { actor: 'A', action: 'git checkout -b feature/api', detail: '创建 api 分支' },
+  { actor: 'C', action: 'echo "user api" > api.py && git add . && git commit -m "feat: add user API"', detail: '用户 API 开发' },
+  { actor: 'B', action: 'git checkout main && echo "fix typo" > readme.md && git add . && git commit -m "fix: typo"', detail: '修复 readme typo' },
+  { actor: 'A', action: 'git checkout main && git merge feature/api', detail: '合并 api 分支' },
+  { actor: 'C', action: 'echo "tests" > test_api.py && git add . && git commit -m "test: add API tests"', detail: '添加测试用例' },
+  { actor: 'A', action: 'git log --oneline --graph', detail: '查看最终提交历史' }
+];
+
+function runCollabStep() {
+  if (collabStep >= collabSteps.length) {
+    addCollabLog('所有步骤已完成！', 'success');
+    return;
+  }
+  var step = collabSteps[collabStep];
+  var actorEl = document.getElementById('collab' + step.actor + 'Events');
+
+  if (step.action === 'git init') {
+    if (!state.initialized) {
+      state.initialized = true;
+      state.repo.branches = { main: null };
+      state.repo.head = 'main';
+      state.repo.commits = [];
+      state.repo.log = [];
+    }
+  } else if (step.action.indexOf('echo') >= 0 && step.action.indexOf('commit') >= 0) {
+    if (!state.initialized) return;
+    state.commitCounter++;
+    var hash = 'a' + String(state.commitCounter).padStart(6, '0');
+    var msgMatch = step.action.match(/commit -m "(.+?)"/);
+    var commitMsg = msgMatch ? msgMatch[1] : 'commit #' + state.commitCounter;
+    state.repo.commits.push({ hash: hash, message: commitMsg, branch: state.repo.head, timestamp: Date.now() });
+    state.repo.branches[state.repo.head] = hash;
+    state.repo.log.unshift(hash + ' ' + commitMsg);
+  } else if (step.action.indexOf('git checkout -b') >= 0) {
+    var bnMatch = step.action.match(/git checkout -b (\S+)/);
+    if (bnMatch && state.initialized) {
+      state.repo.branches[bnMatch[1]] = state.repo.branches[state.repo.head];
+      state.repo.head = bnMatch[1];
+    }
+  } else if (step.action.indexOf('git checkout ') >= 0) {
+    var coMatch = step.action.match(/git checkout (\S+)/);
+    if (coMatch && state.repo.branches[coMatch[1]]) state.repo.head = coMatch[1];
+  } else if (step.action.indexOf('git merge') >= 0) {
+    var mgMatch = step.action.match(/git merge (\S+)/);
+    if (mgMatch && state.initialized) {
+      state.commitCounter++;
+      var mHash = 'a' + String(state.commitCounter).padStart(6, '0');
+      state.repo.commits.push({ hash: mHash, message: "Merge branch '" + mgMatch[1] + "'", branch: state.repo.head, merge: true, timestamp: Date.now() });
+      state.repo.branches[state.repo.head] = mHash;
+      state.repo.log.unshift(mHash + " Merge branch '" + mgMatch[1] + "'");
+    }
+  }
+
+  var actors = { A: '开发者 A', B: '开发者 B', C: '开发者 C' };
+  actorEl.innerHTML += '<div class="mt-1 text-xs">→ ' + step.detail + '</div>';
+  addCollabLog('[' + actors[step.actor] + '] ' + step.detail + ' (' + step.action + ')', 'info');
+  collabStep++;
+  renderGraph();
+  renderLevels();
+}
+
+function runFullCollab() {
+  if (collabRunning) return;
+  collabRunning = true;
+  (function doNext() {
+    if (collabStep < collabSteps.length) {
+      runCollabStep();
+      setTimeout(doNext, 400);
+    } else {
+      collabRunning = false;
+      addCollabLog('团队协作模拟完成！', 'success');
+    }
+  })();
+}
+
+function resetCollab() {
+  collabStep = 0;
+  collabRunning = false;
+  document.getElementById('collabAEvents').innerHTML = '';
+  document.getElementById('collabBEvents').innerHTML = '';
+  document.getElementById('collabCEvents').innerHTML = '';
+  document.getElementById('collabLog').innerHTML = '';
+}
+
+function addCollabLog(msg, type) {
+  var log = document.getElementById('collabLog');
+  var div = document.createElement('div');
+  div.className = type === 'success' ? 'text-emerald-400' : 'text-slate-300';
+  div.textContent = msg;
+  log.appendChild(div);
+}
+</script>
+</body>
+</html>
