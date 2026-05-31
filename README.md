@@ -1,17 +1,17 @@
-# Git 中文最佳实践
+# Git中文最佳实践
 
-[![HTML](https://img.shields.io/badge/HTML-standalone-orange)]()
-[![SVG](https://img.shields.io/badge/SVG-git--graph-green)]()
+Git提交乱七八糟？
+**交互式实验室帮你学会规范操作。**
 
-Git 中文最佳实践交互式学习实验室。
+[![HTML](https://img.shields.io/badge/打开即用-无需安装-orange)]()
 
-## 功能
+## Git不再"乱"
 
-- **提交历史可视化**：SVG 节点图展示
-- **团队协作模拟**：3 个开发者 + PR 流程 + 冲突解决
-- **最佳实践指南**：中文 Git 规范和建议
-- **交互式练习**：模拟 Git 操作场景
+- **提交历史可视化**：SVG节点图展示
+- **团队协作模拟**：3个开发者+PR流程+冲突解决
+- **最佳实践指南**：中文Git规范和建议
+- **交互式练习**：模拟Git操作场景
 
-## 使用
+## 怎么用
 
-打开 interactive_lab.html 即可使用。
+打开 `interactive_lab.html` → 查看提交历史 → 模拟操作
